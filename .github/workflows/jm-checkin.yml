@@ -41,4 +41,15 @@ jobs:
           EOF
 
       - name: Run check-in
-        run: python run.py --once
+        run: |
+          for attempt in 1 2 3; do
+            if python run.py --once; then
+              exit 0
+            fi
+            echo "签到失败（第 ${attempt} 次尝试）"
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 120
+            fi
+          done
+          echo "重试 3 次后仍然失败"
+          exit 1
