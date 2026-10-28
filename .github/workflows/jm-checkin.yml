@@ -53,3 +53,9 @@ jobs:
           done
           echo "重试 3 次后仍然失败"
           exit 1
+      - name: Send DingTalk Notification
+        if: always() # 无论签到成功还是失败都发送通知
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{"msgtype": "text", "text": {"content": "jmComic 每日签到任务已执行完毕。\n请登录 GitHub Actions 查看具体日志。(本条消息包含关键词: 签到)"}}' \
+               "${{ secrets.DINGTALK_WEBHOOK }}"
