@@ -28,7 +28,7 @@ jobs:
         run: |
           cat > config.yml <<'EOF'
           accounts:
-            - name: default
+            - name: ""
               username: "${JM_USERNAME}"
               password: "${JM_PASSWORD}"
           schedule:
@@ -56,10 +56,16 @@ jobs:
             fi
           done
           
-          # 1. 剥除隐藏的颜色代码
-          # 2. 使用正则只替换 "default:" 以及其后的空格，保留前面的图标（如 ⏩）
-          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/default:[[:space:]]*//g' | tr -d '\r')
+          # 使用 perl 暴力剔除所有的 default 和冒号组合，不依赖常规 sed
+          # 然后把前面乱码般的前缀清空，只留结果
+          RAW_LINE=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1)
+          EXTRACTED=$(echo "$RAW_LINE" | perl -pe 's/.*default:\s*//g' | perl -pe 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
           
+          # 如果上面的提取失败（例如连 default 都没有），直接用冒号强行切割取后半段
+          if [ -z "$EXTRACTED" ]; then
+            EXTRACTED=$(echo "$RAW_LINE" | perl -pe 's/\x1b\[[0-9;]*m//g' | cut -d ':' -f 2- | tr -d '\r')
+          fi
+
           if [ -z "$EXTRACTED" ]; then
             EXTRACTED="未抓取到关键信息，请前往 Actions 查看详细日志。"
           fi
