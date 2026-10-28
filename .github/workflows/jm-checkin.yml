@@ -26,26 +26,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate config
+      # ===== 运行账号 1 =====
+      - name: Run check-in for Account 1
         run: |
           cat > config.yml <<'EOF'
           accounts:
             - name: ""
               username: "${JM_USERNAME}"
               password: "${JM_PASSWORD}"
-          EOF
-          
-          # 如果配置了第二个账号，则动态追加
-          if [ -n "${JM_USERNAME2}" ]; then
-            cat >> config.yml <<'EOF'
-            - name: ""
-              username: "${JM_USERNAME2}"
-              password: "${JM_PASSWORD2}"
-          EOF
-          fi
-          
-          # 追加定时任务和通知配置
-          cat >> config.yml <<'EOF'
           schedule:
             time: "08:00"
             timezone: "Asia/Shanghai"
@@ -54,52 +42,55 @@ jobs:
             - type: pushplus
               token: "${PUSHPLUS_TOKEN}"
           EOF
+          
+          echo "=== 账号 1 开始尝试 ==="
+          python run.py --once 2>&1 | tee log1.txt
+          exit 0
 
-      - name: Run check-in
-        id: checkin_step
+      # ===== 运行账号 2 (如果配置了的话) =====
+      - name: Run check-in for Account 2
+        if: env.JM_USERNAME2 != ''
         run: |
-          SUCCESS=false
-          for attempt in 1 2 3; do
-            echo "=== 第 $attempt 次尝试 ==="
-            if python run.py --once 2>&1 | tee checkin_log.txt; then
-              SUCCESS=true
-              break
-            fi
-            echo "签到失败（第 ${attempt} 次尝试）"
-            if [ "${attempt}" -lt 3 ]; then
-              sleep 120
-            fi
-          done
+          cat > config.yml <<'EOF'
+          accounts:
+            - name: ""
+              username: "${JM_USERNAME2}"
+              password: "${JM_PASSWORD2}"
+          schedule:
+            time: "08:00"
+            timezone: "Asia/Shanghai"
+            run_on_start: true
+          notify:
+            - type: pushplus
+              token: "${PUSHPLUS_TOKEN}"
+          EOF
           
-          # 多账号提取逻辑：抓取所有包含结果的行，去掉颜色代码和前缀
-          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | \
-                      perl -pe 's/.*default:\s*//g' | \
-                      perl -pe 's/\x1b\[[0-9;]*m//g' | \
-                      tr -d '\r' | \
-                      grep -v '^$')
-          
-          if [ -z "$EXTRACTED" ]; then
-            EXTRACTED="未抓取到关键信息，请前往 Actions 查看详细日志。"
-          fi
-          
-          # 写入多行环境变量（使用 heredoc 语法防止截断）
-          echo "SIGN_RESULT<<EOF" >> $GITHUB_ENV
-          echo "$EXTRACTED" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          
-          if [ "$SUCCESS" = false ]; then
-            echo "重试 3 次后仍然失败"
-            exit 1
-          fi
+          echo "=== 账号 2 开始尝试 ==="
+          python run.py --once 2>&1 | tee log2.txt
+          exit 0
 
-      - name: Send DingTalk Notification
+      # ===== 提取结果并发送通知 =====
+      - name: Extract Results and Send DingTalk
         if: always()
         run: |
+          # 清洗并提取账号1的结果
+          RES1=$(grep -E -i "JCoin|签到|成功|失败|error|exception" log1.txt | grep -v "INFO" | perl -pe 's/.*default:\s*//g' | perl -pe 's/\x1b\[[0-9;]*m//g' | tr -d '\r' | grep -v '^$')
+          if [ -z "$RES1" ]; then RES1="账号1无结果或失败"; fi
+          
+          # 清洗并提取账号2的结果
+          RES2=""
+          if [ -f log2.txt ]; then
+            RES2=$(grep -E -i "JCoin|签到|成功|失败|error|exception" log2.txt | grep -v "INFO" | perl -pe 's/.*default:\s*//g' | perl -pe 's/\x1b\[[0-9;]*m//g' | tr -d '\r' | grep -v '^$')
+            if [ -z "$RES2" ]; then RES2="账号2无结果或失败"; fi
+          fi
+
+          # 组合最终消息
           MSG_CONTENT=$(cat <<EOF
           jmComic 每日签到任务已执行完毕。
           
           具体结果：
-          ${SIGN_RESULT}
+          ${RES1}
+          ${RES2}
           
           (本条消息包含关键词: 签到)
           EOF
