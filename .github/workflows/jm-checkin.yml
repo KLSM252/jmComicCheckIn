@@ -44,11 +44,10 @@ jobs:
         id: checkin_step
         run: |
           SUCCESS=false
-          # 保留重试逻辑，同时将日志输出到文件
           for attempt in 1 2 3; do
             echo "=== 第 $attempt 次尝试 ==="
-            # tee 命令将输出同时打印到控制台和写入 checkin_log.txt
-            if python run.py --once | tee checkin_log.txt; then
+            # 注意这里加了 2>&1，强制把错误信息也抓取下来
+            if python run.py --once 2>&1 | tee checkin_log.txt; then
               SUCCESS=true
               break
             fi
@@ -58,15 +57,20 @@ jobs:
             fi
           done
           
-          # 放宽提取条件，忽略大小写，只要包含 JCoin、签到、成功、失败、error 都抓取最后一行
-          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1)
+          # 强制打印日志文件内容到 Actions 控制台，方便排查
+          echo "=== Python 运行日志如下 ==="
+          cat checkin_log.txt
+          echo "==========================="
           
-          # 如果还是抓不到，就把最后 5 行日志作为结果发出来，方便排查
+          # 抓取日志：只要包含关键词，就抓最后一行，并清理回车符
+          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | tr -d '\r')
+          
+          # 如果还是空，给一个单行的兜底提示，防止多行文本搞坏变量
           if [ -z "$EXTRACTED" ]; then
-            EXTRACTED=$(tail -n 5 checkin_log.txt)
+            EXTRACTED="未抓取到关键信息，请前往 Actions 查看详细日志。"
           fi
           
-          # 将提取到的结果存入环境变量，供后续步骤使用
+          # 存入环境变量
           echo "SIGN_RESULT=$EXTRACTED" >> $GITHUB_ENV
           
           if [ "$SUCCESS" = false ]; then
@@ -75,9 +79,8 @@ jobs:
           fi
 
       - name: Send DingTalk Notification
-        if: always() # 无论签到成功还是失败都发送通知
+        if: always()
         run: |
-          # 修复换行符问题，使用多行字符串构建消息内容
           MSG_CONTENT=$(cat <<EOF
           jmComic 每日签到任务已执行完毕。
           
@@ -88,12 +91,10 @@ jobs:
           EOF
           )
           
-          # 使用 jq 构造安全的 JSON，防止特殊字符导致格式错误
           JSON_PAYLOAD=$(jq -n \
             --arg content "$MSG_CONTENT" \
             '{msgtype: "text", text: {content: $content}}')
             
-          # 发送到钉钉
           curl -s -H "Content-Type: application/json" \
                -d "$JSON_PAYLOAD" \
                "${{ secrets.DINGTALK_WEBHOOK }}"
