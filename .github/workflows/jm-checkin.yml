@@ -46,7 +46,6 @@ jobs:
           SUCCESS=false
           for attempt in 1 2 3; do
             echo "=== 第 $attempt 次尝试 ==="
-            # 注意这里加了 2>&1，强制把错误信息也抓取下来
             if python run.py --once 2>&1 | tee checkin_log.txt; then
               SUCCESS=true
               break
@@ -57,20 +56,17 @@ jobs:
             fi
           done
           
-          # 强制打印日志文件内容到 Actions 控制台，方便排查
           echo "=== Python 运行日志如下 ==="
           cat checkin_log.txt
           echo "==========================="
           
-          # 抓取日志：只要包含关键词，就抓最后一行，并清理回车符
-          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | tr -d '\r')
+          # 新增了 sed 's/default: //g'，用于将 "default: " 替换为空白
+          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | sed 's/default: //g' | tr -d '\r')
           
-          # 如果还是空，给一个单行的兜底提示，防止多行文本搞坏变量
           if [ -z "$EXTRACTED" ]; then
             EXTRACTED="未抓取到关键信息，请前往 Actions 查看详细日志。"
           fi
           
-          # 存入环境变量
           echo "SIGN_RESULT=$EXTRACTED" >> $GITHUB_ENV
           
           if [ "$SUCCESS" = false ]; then
