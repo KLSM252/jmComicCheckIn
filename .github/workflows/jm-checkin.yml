@@ -11,6 +11,8 @@ jobs:
     env:
       JM_USERNAME: ${{ secrets.JM_USERNAME }}
       JM_PASSWORD: ${{ secrets.JM_PASSWORD }}
+      JM_USERNAME2: ${{ secrets.JM_USERNAME2 }}
+      JM_PASSWORD2: ${{ secrets.JM_PASSWORD2 }}
       PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
     steps:
       - name: Checkout
@@ -31,6 +33,19 @@ jobs:
             - name: ""
               username: "${JM_USERNAME}"
               password: "${JM_PASSWORD}"
+          EOF
+          
+          # 如果配置了第二个账号，则动态追加
+          if [ -n "${JM_USERNAME2}" ]; then
+            cat >> config.yml <<'EOF'
+            - name: ""
+              username: "${JM_USERNAME2}"
+              password: "${JM_PASSWORD2}"
+          EOF
+          fi
+          
+          # 追加定时任务和通知配置
+          cat >> config.yml <<'EOF'
           schedule:
             time: "08:00"
             timezone: "Asia/Shanghai"
@@ -56,21 +71,21 @@ jobs:
             fi
           done
           
-          # 使用 perl 暴力剔除所有的 default 和冒号组合，不依赖常规 sed
-          # 然后把前面乱码般的前缀清空，只留结果
-          RAW_LINE=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1)
-          EXTRACTED=$(echo "$RAW_LINE" | perl -pe 's/.*default:\s*//g' | perl -pe 's/\x1b\[[0-9;]*m//g' | tr -d '\r')
+          # 多账号提取逻辑：抓取所有包含结果的行，去掉颜色代码和前缀
+          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | \
+                      perl -pe 's/.*default:\s*//g' | \
+                      perl -pe 's/\x1b\[[0-9;]*m//g' | \
+                      tr -d '\r' | \
+                      grep -v '^$')
           
-          # 如果上面的提取失败（例如连 default 都没有），直接用冒号强行切割取后半段
-          if [ -z "$EXTRACTED" ]; then
-            EXTRACTED=$(echo "$RAW_LINE" | perl -pe 's/\x1b\[[0-9;]*m//g' | cut -d ':' -f 2- | tr -d '\r')
-          fi
-
           if [ -z "$EXTRACTED" ]; then
             EXTRACTED="未抓取到关键信息，请前往 Actions 查看详细日志。"
           fi
           
-          echo "SIGN_RESULT=$EXTRACTED" >> $GITHUB_ENV
+          # 写入多行环境变量（使用 heredoc 语法防止截断）
+          echo "SIGN_RESULT<<EOF" >> $GITHUB_ENV
+          echo "$EXTRACTED" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
           
           if [ "$SUCCESS" = false ]; then
             echo "重试 3 次后仍然失败"
