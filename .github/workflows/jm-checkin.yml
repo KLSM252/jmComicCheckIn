@@ -41,21 +41,51 @@ jobs:
           EOF
 
       - name: Run check-in
+        id: checkin_step
         run: |
+          SUCCESS=false
+          # 保留你的重试逻辑，同时将日志输出到文件
           for attempt in 1 2 3; do
-            if python run.py --once; then
-              exit 0
+            echo "=== 第 $attempt 次尝试 ==="
+            # tee 命令将输出同时打印到控制台和写入 checkin_log.txt
+            if python run.py --once | tee checkin_log.txt; then
+              SUCCESS=true
+              break
             fi
             echo "签到失败（第 ${attempt} 次尝试）"
             if [ "${attempt}" -lt 3 ]; then
               sleep 120
             fi
           done
-          echo "重试 3 次后仍然失败"
-          exit 1
+          
+          # 提取签到结果：抓取包含 JCoin 或 签到 的最后一行记录
+          EXTRACTED=$(grep -E "JCoin|每日簽到|签到|成功|失败" checkin_log.txt | tail -n 1)
+          
+          # 如果提取失败，给一个默认提示
+          if [ -z "$EXTRACTED" ]; then
+            EXTRACTED="未能从日志中提取到具体结果，请前往 GitHub Actions 查看控制台。"
+          fi
+          
+          # 将提取到的结果存入环境变量，供后续步骤使用
+          echo "SIGN_RESULT=$EXTRACTED" >> $GITHUB_ENV
+          
+          if [ "$SUCCESS" = false ]; then
+            echo "重试 3 次后仍然失败"
+            exit 1
+          fi
+
       - name: Send DingTalk Notification
         if: always() # 无论签到成功还是失败都发送通知
         run: |
-          curl -H "Content-Type: application/json" \
-               -d '{"msgtype": "text", "text": {"content": "jmComic 每日签到任务已执行完毕。\n请登录 GitHub Actions 查看具体日志。(本条消息包含关键词: 签到)"}}' \
+          # 组合要发送的文本（保留“签到”触发词）
+          MSG_CONTENT="jmComic 每日签到任务已执行完毕。\n\n具体结果：\n${SIGN_RESULT}\n\n(本条消息包含关键词: 签到)"
+          
+          # 使用 jq 构造安全的 JSON，防止文本里的特殊符号导致报错
+          JSON_PAYLOAD=$(jq -n \
+            --arg content "$MSG_CONTENT" \
+            '{msgtype: "text", text: {content: $content}}')
+            
+          # 发送到钉钉
+          curl -s -H "Content-Type: application/json" \
+               -d "$JSON_PAYLOAD" \
                "${{ secrets.DINGTALK_WEBHOOK }}"
