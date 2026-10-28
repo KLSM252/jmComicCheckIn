@@ -60,8 +60,8 @@ jobs:
           cat checkin_log.txt
           echo "==========================="
           
-          # 新增了 sed 's/default: //g'，用于将 "default: " 替换为空白
-          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | sed 's/default: //g' | tr -d '\r')
+          # 剥离颜色代码，并从 default: 处截断，只留后面的内容
+          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/.*default: //' | tr -d '\r')
           
           if [ -z "$EXTRACTED" ]; then
             EXTRACTED="未抓取到关键信息，请前往 Actions 查看详细日志。"
