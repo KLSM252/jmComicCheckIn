@@ -56,12 +56,9 @@ jobs:
             fi
           done
           
-          echo "=== Python 运行日志如下 ==="
-          cat checkin_log.txt
-          echo "==========================="
-          
-          # 剥离颜色代码，并从 default: 处截断，只留后面的内容
-          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/.*default: //' | tr -d '\r')
+          # 1. 剥除隐藏的颜色代码
+          # 2. 使用正则只替换 "default:" 以及其后的空格，保留前面的图标（如 ⏩）
+          EXTRACTED=$(grep -E -i "JCoin|签到|成功|失败|error|exception" checkin_log.txt | tail -n 1 | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/default:[[:space:]]*//g' | tr -d '\r')
           
           if [ -z "$EXTRACTED" ]; then
             EXTRACTED="未抓取到关键信息，请前往 Actions 查看详细日志。"
