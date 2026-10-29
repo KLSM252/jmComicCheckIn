@@ -3,7 +3,7 @@ name: JM Check-in
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 * * *" # UTC 0点，即北京时间早上 8 点
 
 jobs:
   checkin:
@@ -15,11 +15,12 @@ jobs:
       JM_PASSWORD2: ${{ secrets.JM_PASSWORD2 }}
       PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
     steps:
+      # 修复1：版本号改为官方支持的最新版
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -29,7 +30,8 @@ jobs:
       # ===== 运行账号 1 =====
       - name: Run check-in for Account 1
         run: |
-          cat > config.yml <<'EOF'
+          # 修复2：去掉 EOF 的单引号，允许变量注入；建议加上缩进对齐
+          cat > config.yml <<EOF
           accounts:
             - name: ""
               username: "${JM_USERNAME}"
@@ -51,7 +53,8 @@ jobs:
       - name: Run check-in for Account 2
         if: env.JM_USERNAME2 != ''
         run: |
-          cat > config.yml <<'EOF'
+          # 同样去掉单引号
+          cat > config.yml <<EOF
           accounts:
             - name: ""
               username: "${JM_USERNAME2}"
