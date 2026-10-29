@@ -3,7 +3,7 @@ name: JM Check-in
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *" # UTC 0点，即北京时间早上 8 点
+    - cron: "0 0 * * *" # UTC 0点，即北京时间早上 8 点
 
 jobs:
   checkin:
